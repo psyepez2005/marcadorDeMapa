@@ -2,17 +2,24 @@ import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import st_folium
+import os
 
-st.set_page_config(layout="wide", page_title="Mapa Iniciativas")
+st.set_page_config(layout="wide", page_title="Mapa Iniciativas STEM en Ecuador")
 
 if 'puntos_manuales' not in st.session_state:
     st.session_state['puntos_manuales'] = []
 if 'punto_temporal' not in st.session_state:
     st.session_state['punto_temporal'] = None
+if 'mostrar_csv' not in st.session_state:
+    st.session_state['mostrar_csv'] = True
+
+def activar_vista_csv():
+    st.session_state['mostrar_csv'] = True
 
 with st.sidebar:
     st.title("Panel de Control")
-    archivo = st.file_uploader("Cargar CSV", type=["csv"])
+    
+    archivo = st.file_uploader("Cargar CSV", type=["csv"], on_change=activar_vista_csv)
     
     if st.session_state['punto_temporal']:
         st.divider()
@@ -50,21 +57,30 @@ with st.sidebar:
         st.info("Haz clic en el mapa para añadir un punto.")
 
     st.divider()
-    if st.button("Borrar todo"):
+    if st.button("Borrar todos los puntos"):
         st.session_state['puntos_manuales'] = []
         st.session_state['punto_temporal'] = None
+        st.session_state['mostrar_csv'] = False  
         st.rerun()
 
 puntos_totales = []
+df = None
 
-if archivo:
-    try:
+if st.session_state['mostrar_csv']:
+    if archivo:
         try:
             df = pd.read_csv(archivo, sep=";", encoding="utf-8")
         except:
             archivo.seek(0)
             df = pd.read_csv(archivo, sep=";", encoding="latin-1")
-            
+    elif os.path.exists("IniciativasSTEMParaImportar.csv"):
+        try:
+            df = pd.read_csv("IniciativasSTEMParaImportar.csv", sep=";", encoding="utf-8")
+        except:
+            df = pd.read_csv("IniciativasSTEMParaImportar.csv", sep=";", encoding="latin-1")
+
+if df is not None:
+    try:
         df.columns = [c.strip().upper() for c in df.columns]
         col_lat = next((c for c in df.columns if 'LAT' in c), None)
         col_lon = next((c for c in df.columns if 'LON' in c), None)
@@ -83,7 +99,7 @@ if archivo:
                     })
                 except: pass
     except Exception as e:
-        st.error(f"Error CSV: {e}")
+        st.error(f"Error procesando datos: {e}")
 
 puntos_totales.extend(st.session_state['puntos_manuales'])
 
@@ -119,7 +135,7 @@ if st.session_state['punto_temporal']:
     lat_t, lon_t = st.session_state['punto_temporal']
     folium.Marker([lat_t, lon_t], popup="Nuevo", icon=folium.Icon(color="green", icon="plus")).add_to(m)
 
-st.write("### Mapa de Iniciativas")
+st.write("### Mapa de Iniciativas STEM en Ecuador")
 
 mapa_out = st_folium(
     m, 
@@ -129,7 +145,7 @@ mapa_out = st_folium(
 )
 
 if mapa_out.get('last_clicked'):
-    nuevo_lat = mapa_out['last_clicked']['lat']
+    nuevo_lat = mapa_out['last_clicked']['lat'] + 0.00025
     nuevo_lon = mapa_out['last_clicked']['lng']
     
     if st.session_state['punto_temporal'] != (nuevo_lat, nuevo_lon):
