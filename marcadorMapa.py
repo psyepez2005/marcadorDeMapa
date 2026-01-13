@@ -4,7 +4,7 @@ import folium
 from streamlit_folium import st_folium
 import os
 
-st.set_page_config(layout="wide", page_title="Mapa Iniciativas STEM en Ecuador")
+st.set_page_config(layout="wide", page_title="Mapa Iniciativas STEM")
 
 if 'puntos_manuales' not in st.session_state:
     st.session_state['puntos_manuales'] = []
@@ -19,7 +19,7 @@ def activar_vista_csv():
 with st.sidebar:
     st.title("Panel de Control")
     
-    archivo = st.file_uploader("Cargar CSV", type=["csv"], on_change=activar_vista_csv)
+    archivo = st.file_uploader("Cargar otro CSV", type=["csv"], on_change=activar_vista_csv)
     
     if st.session_state['punto_temporal']:
         st.divider()
@@ -28,8 +28,11 @@ with st.sidebar:
         st.write(f"Coordenadas: `{lat_temp:.4f}, {lon_temp:.4f}`")
         
         with st.form("formulario_crear"):
-            nombre_input = st.text_input("Nombre del lugar")
+            nombre_input = st.text_input("Nombre / Título")
             desc_input = st.text_area("Descripción")
+            url_input = st.text_input("URL Web (http...)")
+            logo_input = st.text_input("URL Logo (Imagen)")
+            anio_input = st.text_input("Año de creación")
             
             col1, col2 = st.columns(2)
             guardar = col1.form_submit_button("Guardar", type="primary")
@@ -42,6 +45,9 @@ with st.sidebar:
                         "lon": lon_temp,
                         "nombre": nombre_input,
                         "desc": desc_input,
+                        "url": url_input,
+                        "logo": logo_input,
+                        "anio": anio_input,
                         "tipo": "Manual"
                     })
                     st.session_state['punto_temporal'] = None
@@ -54,7 +60,7 @@ with st.sidebar:
                 st.session_state['punto_temporal'] = None
                 st.rerun()
     else:
-        st.info("Haz clic en el mapa para añadir un punto.")
+        st.info("Haz clic en el mapa para añadir un punto manualmente.")
 
     st.divider()
     if st.button("Borrar todos los puntos"):
@@ -82,24 +88,33 @@ if st.session_state['mostrar_csv']:
 if df is not None:
     try:
         df.columns = [c.strip().upper() for c in df.columns]
+        
         col_lat = next((c for c in df.columns if 'LAT' in c), None)
         col_lon = next((c for c in df.columns if 'LON' in c), None)
         col_nom = next((c for c in df.columns if 'NOM' in c), "NOMBRE")
         col_desc = next((c for c in df.columns if 'OBJ' in c or 'DESC' in c), None)
+        col_url = next((c for c in df.columns if 'URL' in c or 'LINK' in c), None)
+        col_logo = next((c for c in df.columns if 'LOGO' in c or 'IMG' in c), None)
+        col_anio = next((c for c in df.columns if 'AÑO' in c or 'CREACION' in c), None)
 
         if col_lat and col_lon:
             for _, row in df.iterrows():
                 try:
-                    puntos_totales.append({
+                    punto = {
                         "lat": float(str(row[col_lat]).replace(',', '.')),
                         "lon": float(str(row[col_lon]).replace(',', '.')),
                         "nombre": str(row[col_nom]),
-                        "desc": str(row[col_desc]) if col_desc else "",
+                        "desc": str(row[col_desc]) if col_desc and pd.notna(row[col_desc]) else "",
+                        "url": str(row[col_url]) if col_url and pd.notna(row[col_url]) else "",
+                        "logo": str(row[col_logo]) if col_logo and pd.notna(row[col_logo]) else "",
+                        "anio": str(row[col_anio]).replace('.0','') if col_anio and pd.notna(row[col_anio]) else "",
                         "tipo": "CSV"
-                    })
-                except: pass
+                    }
+                    puntos_totales.append(punto)
+                except: 
+                    continue
     except Exception as e:
-        st.error(f"Error procesando datos: {e}")
+        st.error(f"Error procesando estructura del CSV: {e}")
 
 puntos_totales.extend(st.session_state['puntos_manuales'])
 
@@ -114,12 +129,36 @@ m = folium.Map(location=[-1.8312, -78.1834], zoom_start=7)
 for coord, lista in grupos.items():
     lat, lon = coord
     
-    html = f'<div style="font-family:sans-serif; width:280px; max-height:250px; overflow-y:auto;">'
+    html = f'<div style="font-family:sans-serif; width:260px; max-height:300px; overflow-y:auto; padding-right:5px;">'
+    
     hay_manual = False
+    
     for i, p in enumerate(lista):
-        if p['tipo'] == 'Manual': hay_manual = True
-        html += f"""<div style="border-bottom:1px solid #ddd; margin-bottom:5px;">
-        <b>{i+1}. {p['nombre']}</b><br><span style="font-size:12px; color:#555;">{p['desc']}</span></div>"""
+        if p.get('tipo') == 'Manual': hay_manual = True
+        
+        if i > 0: html += '<hr style="margin: 10px 0; border: 0; border-top: 1px solid #ccc;">'
+        
+        html += f'<div style="margin-bottom:5px;">'
+        html += f'<h4 style="margin:0 0 5px 0; color:#333;">{p["nombre"]}</h4>'
+        
+        if p.get('logo') and p['logo'].startswith('http'):
+            html += f'<img src="{p["logo"]}" style="width:100%; max-height:120px; object-fit:contain; margin-bottom:8px; border-radius:4px;">'
+        
+        if p.get('desc'):
+            html += f'<p style="font-size:13px; color:#555; margin-bottom:5px;">{p["desc"]}</p>'
+            
+        if p.get('anio'):
+            html += f'<p style="font-size:12px; margin:0 0 5px 0;"><b>Año:</b> {p["anio"]}</p>'
+            
+        if p.get('url') and p['url'].startswith('http'):
+            html += f"""<div style="text-align:center;">
+                        <a href="{p['url']}" target="_blank" 
+                           style="background-color:#007bff; color:white; padding:6px 12px; text-decoration:none; border-radius:15px; font-size:12px; display:inline-block;">
+                           Visitar Sitio Web
+                        </a></div>"""
+        
+        html += '</div>'
+        
     html += "</div>"
     
     color = "red" if hay_manual else "blue"
@@ -127,13 +166,13 @@ for coord, lista in grupos.items():
     folium.Marker(
         [lat, lon],
         popup=folium.Popup(html, max_width=300),
-        tooltip=f"{len(lista)} iniciativa(s) disponible(s)",
+        tooltip=f"{len(lista)} iniciativa(s) aquí",
         icon=folium.Icon(color=color, icon="info-sign")
     ).add_to(m)
 
 if st.session_state['punto_temporal']:
     lat_t, lon_t = st.session_state['punto_temporal']
-    folium.Marker([lat_t, lon_t], popup="Nuevo", icon=folium.Icon(color="green", icon="plus")).add_to(m)
+    folium.Marker([lat_t, lon_t], popup="Nuevo Punto", icon=folium.Icon(color="green", icon="plus")).add_to(m)
 
 st.write("### Mapa de Iniciativas STEM en Ecuador")
 
@@ -145,9 +184,11 @@ mapa_out = st_folium(
 )
 
 if mapa_out.get('last_clicked'):
-    nuevo_lat = mapa_out['last_clicked']['lat'] + 0.00025
+    nuevo_lat = mapa_out['last_clicked']['lat']
     nuevo_lon = mapa_out['last_clicked']['lng']
     
-    if st.session_state['punto_temporal'] != (nuevo_lat, nuevo_lon):
+    if st.session_state['punto_temporal'] is None or \
+       abs(st.session_state['punto_temporal'][0] - nuevo_lat) > 0.00001:
+        
         st.session_state['punto_temporal'] = (nuevo_lat, nuevo_lon)
         st.rerun()
